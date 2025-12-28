@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Realistic F1 Racer</title>
+<title>Realistic F1 Racer - Easy Road</title>
 <style>
   body {
     margin: 0;
     background: #000;
-    font-family: Arial, sans-serif;
+    font-family: Arial;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -28,23 +28,19 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-// ================= CONSTANTS =================
-const TRACK_LENGTH = 10000; // meters
+const TRACK_LENGTH = 10000; 
 const MAX_SPEED = 8;
 
-// ================= STATE =================
 let raceStarted = false;
 let raceOver = false;
-let countdown = 240; // 4 seconds
+let countdown = 240; 
 let roadCurve = 0;
 let targetCurve = 0;
 
-// ================= INPUT =================
 const keys = {};
 document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
 
-// ================= PLAYER =================
 const player = {
   x: 0,
   vx: 0,
@@ -53,7 +49,6 @@ const player = {
   angle: 0
 };
 
-// ================= AI CARS =================
 const aiCars = [];
 const colors = ["#007bff", "#28a745", "#ffc107", "#fd7e14"];
 for (let i = 0; i < 4; i++) {
@@ -65,7 +60,6 @@ for (let i = 0; i < 4; i++) {
   });
 }
 
-// ================= UPDATE =================
 function update() {
   if (raceOver) return;
 
@@ -76,153 +70,18 @@ function update() {
     return;
   }
 
-  // Random road turns
+  // Road curves
   if (Math.random() < 0.01)
-    targetCurve = (Math.random() - 0.5) * 0.6;
+    targetCurve = (Math.random() - 0.5) * 0.3; // smaller curves = easier
 
   roadCurve += (targetCurve - roadCurve) * 0.02;
 
   // Player speed
   if (keys["ArrowUp"]) player.speed += 0.12;
   if (keys["ArrowDown"]) player.speed -= 0.2;
-  player.speed *= 0.99;
+  player.speed *= 0.98;
   player.speed = Math.max(0, Math.min(player.speed, MAX_SPEED));
 
   // Steering & drift
-  const drifting = keys[" "];
-  const steer = drifting ? 0.6 : 0.4;
-  const grip = drifting ? 0.93 : 0.8;
-
-  if (keys["ArrowLeft"]) player.vx -= steer;
-  if (keys["ArrowRight"]) player.vx += steer;
-
-  player.vx *= grip;
-  player.x += player.vx;
-  player.angle = player.vx * 0.04;
-
-  // Curve force
-  player.x -= roadCurve * player.speed * 18;
-
-  // Clamp road width
-  player.x = Math.max(-260, Math.min(260, player.x));
-
-  // Distance
-  player.dist += player.speed;
-
-  // AI
-  aiCars.forEach(ai => {
-    ai.dist += ai.speed;
-    ai.lane -= roadCurve * ai.speed * 10;
-  });
-
-  // Finish
-  if (player.dist >= TRACK_LENGTH) raceOver = true;
-}
-
-// ================= DRAW HELPERS =================
-function drawF1Car(x, y, scale, angle, color) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.scale(scale, scale);
-
-  // Body
-  ctx.fillStyle = color;
-  ctx.fillRect(-15, -40, 30, 80);
-
-  // Nose
-  ctx.fillRect(-8, -60, 16, 20);
-
-  // Rear wing
-  ctx.fillRect(-25, 30, 50, 8);
-
-  // Wheels
-  ctx.fillStyle = "black";
-  ctx.fillRect(-22, -25, 8, 16);
-  ctx.fillRect(14, -25, 8, 16);
-  ctx.fillRect(-22, 10, 8, 16);
-  ctx.fillRect(14, 10, 8, 16);
-
-  ctx.restore();
-}
-
-// ================= DRAW =================
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Road
-  ctx.fillStyle = "#555";
-  ctx.beginPath();
-  ctx.moveTo(180 + roadCurve * 300, 500);
-  ctx.lineTo(350 + roadCurve * 120, 200);
-  ctx.lineTo(550 + roadCurve * 120, 200);
-  ctx.lineTo(720 + roadCurve * 300, 500);
-  ctx.closePath();
-  ctx.fill();
-
-  // Lane lines
-  ctx.strokeStyle = "white";
-  ctx.setLineDash([25, 20]);
-  for (let i = -1; i <= 1; i++) {
-    ctx.beginPath();
-    ctx.moveTo(450 + i * 130 + roadCurve * 220, 500);
-    ctx.lineTo(450 + i * 40 + roadCurve * 90, 200);
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
-
-  // AI cars
-  aiCars.forEach(ai => {
-    const z = ai.dist - player.dist;
-    if (z < -100 || z > 900) return;
-
-    const scale = 1 - z / 1100;
-    const x = 450 + ai.lane * scale + roadCurve * z * 0.6;
-    const y = 280 + z * 0.45;
-
-    drawF1Car(x, y, scale, roadCurve * 0.2, ai.color);
-  });
-
-  // Player car
-  drawF1Car(450 + player.x, 420, 1, player.angle, "red");
-
-  // HUD
-  ctx.fillStyle = "white";
-  ctx.font = "18px Arial";
-  ctx.fillText(`Distance: ${Math.floor(player.dist)} / ${TRACK_LENGTH} m`, 20, 30);
-  ctx.fillText("SPACE = Drift", 20, 55);
-
-  // Countdown lights
-  if (!raceStarted) {
-    ctx.font = "70px Arial";
-    ctx.fillText(
-      countdown > 160 ? "🔴🔴🔴" :
-      countdown > 80 ? "🟠🟠" : "🟢",
-      350, 250
-    );
-  }
-
-  // Finish message
-  if (raceOver) {
-    ctx.fillStyle = "black";
-    ctx.fillRect(200, 150, 520, 200);
-    ctx.fillStyle = "white";
-    ctx.font = "30px Arial";
-    ctx.fillText("RACE FINISHED!", 330, 215);
-    ctx.font = "28px Arial";
-    ctx.fillText("🎉 HAPPY NEW YEAR 2026!!! 🎉", 245, 265);
-  }
-}
-
-// ================= LOOP =================
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
-
-loop();
-</script>
-
-</body>
-</html>
+  const steerPower = 0.25; // easier control
+  const grip = 0.92;
