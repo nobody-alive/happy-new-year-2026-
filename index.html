@@ -2,22 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>F1 Endless Racer</title>
+<title>Ultimate F1 Racer</title>
 <style>
-  body {
-    margin: 0;
-    background: #000;
-    font-family: Arial, sans-serif;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    color: white;
-  }
-  canvas {
-    background: skyblue;
-    border: 4px solid white;
-  }
+body {
+  margin: 0;
+  background: black;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  color: white;
+  font-family: Arial;
+}
+canvas {
+  border: 4px solid white;
+  background: #87ceeb;
+}
 </style>
 </head>
 <body>
@@ -28,43 +28,50 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-const TRACK_LENGTH = 10000; // 10 km
+// ================= CONSTANTS =================
+const TRACK_LENGTH = 12000;
+const BASE_MAX_SPEED = 8;
+
+// ================= STATE =================
 let raceStarted = false;
 let raceOver = false;
-let countdown = 180; // frames (3 seconds)
-let finishOrder = [];
+let countdown = 180;
+let roadCurve = 0;
+let targetCurve = 0;
+let rain = Math.random() < 0.5;
+let night = true;
 
-// ---------------- INPUT ----------------
+// ================= INPUT =================
 const keys = {};
 document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
 
-// ---------------- ROAD ----------------
-let roadOffset = 0;
-let roadCurve = 0;
-let curveDir = 0;
-
-// ---------------- PLAYER ----------------
+// ================= PLAYER =================
 const player = {
   x: 0,
+  vx: 0,
   speed: 0,
-  maxSpeed: 7,
   dist: 0,
-  vx: 0
+  angle: 0,
+  tire: 100,
+  damage: 0,
+  drs: false,
+  inPit: false
 };
 
-// ---------------- AI CARS ----------------
+// ================= AI =================
 const aiCars = [];
 for (let i = 0; i < 4; i++) {
   aiCars.push({
-    lane: (i - 1.5) * 120,
-    dist: Math.random() * 300,
+    name: "AI " + (i + 1),
+    lane: (i - 1.5) * 140,
+    dist: Math.random() * 600,
     speed: 4.5 + Math.random(),
     color: ["blue", "green", "yellow", "orange"][i]
   });
 }
 
-// ---------------- UPDATE ----------------
+// ================= UPDATE =================
 function update() {
   if (raceOver) return;
 
@@ -75,130 +82,158 @@ function update() {
     return;
   }
 
-  // PLAYER SPEED
-  if (keys["ArrowUp"]) player.speed += 0.15;
+  // Road curves
+  if (Math.random() < 0.01)
+    targetCurve = (Math.random() - 0.5) * 0.7;
+  roadCurve += (targetCurve - roadCurve) * 0.02;
+
+  // Tire wear
+  player.tire -= 0.01;
+  if (player.tire < 0) player.tire = 0;
+
+  // Grip
+  let grip = 0.85 * (player.tire / 100);
+  if (rain) grip *= 0.75;
+  if (keys[" "]) grip *= 0.9;
+
+  // Speed
+  let maxSpeed = BASE_MAX_SPEED * (1 - player.damage / 150);
+  if (keys["ArrowUp"]) player.speed += 0.12;
   if (keys["ArrowDown"]) player.speed -= 0.25;
-  player.speed *= 0.985;
-  player.speed = Math.max(0, Math.min(player.speed, player.maxSpeed));
 
-  // DRIFT
-  const drifting = keys[" "];
-  const grip = drifting ? 0.92 : 0.75;
-  const steerPower = drifting ? 0.6 : 0.4;
+  // DRS
+  player.drs = keys["d"] || keys["D"];
+  if (player.drs && player.speed > 5) maxSpeed += 1.5;
 
-  if (keys["ArrowLeft"]) player.vx -= steerPower;
-  if (keys["ArrowRight"]) player.vx += steerPower;
+  player.speed *= 0.99;
+  player.speed = Math.max(0, Math.min(player.speed, maxSpeed));
 
+  // Steering
+  if (keys["ArrowLeft"]) player.vx -= 0.5;
+  if (keys["ArrowRight"]) player.vx += 0.5;
   player.vx *= grip;
+
   player.x += player.vx;
+  player.angle = player.vx * 0.04;
+  player.x -= roadCurve * player.speed * 18;
 
-  // ROAD CURVES
-  if (Math.random() < 0.01) {
-    curveDir = (Math.random() - 0.5) * 2;
+  // Damage from edges
+  if (Math.abs(player.x) > 280) {
+    player.damage += 0.1;
+    player.speed *= 0.95;
   }
-  roadCurve += curveDir * 0.002;
-  roadCurve *= 0.98;
-  player.x -= roadCurve * player.speed * 15;
 
-  // LIMITS
-  player.x = Math.max(-220, Math.min(220, player.x));
+  // Pit lane
+  player.inPit = player.x > 240 && player.speed < 2;
+  if (player.inPit) {
+    player.tire += 0.5;
+    player.damage -= 0.5;
+    if (player.tire > 100) player.tire = 100;
+    if (player.damage < 0) player.damage = 0;
+  }
 
-  // DISTANCE
   player.dist += player.speed;
-  roadOffset += player.speed;
 
   // AI
   aiCars.forEach(ai => {
     ai.dist += ai.speed;
-    ai.lane += roadCurve * 8;
+    ai.lane -= roadCurve * ai.speed * 8;
   });
 
-  // FINISH
-  if (player.dist >= TRACK_LENGTH) {
-    finishOrder.push("YOU");
-    raceOver = true;
-  }
+  // Finish
+  if (player.dist >= TRACK_LENGTH) raceOver = true;
 }
 
-// ---------------- DRAW ----------------
+// ================= DRAW CAR =================
+function drawF1Car(x, y, s, a, c) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(a);
+  ctx.scale(s, s);
+
+  ctx.fillStyle = c;
+  ctx.fillRect(-12, -35, 24, 70);
+  ctx.fillRect(-6, -55, 12, 20);
+  ctx.fillRect(-22, 30, 44, 8);
+
+  ctx.fillStyle = "black";
+  ctx.fillRect(-20, -20, 8, 16);
+  ctx.fillRect(12, -20, 8, 16);
+  ctx.fillRect(-20, 5, 8, 16);
+  ctx.fillRect(12, 5, 8, 16);
+
+  ctx.restore();
+}
+
+// ================= DRAW =================
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // ROAD
+  // Road
   ctx.fillStyle = "#555";
   ctx.beginPath();
-  ctx.moveTo(200 + roadCurve * 300, 500);
-  ctx.lineTo(350 + roadCurve * 100, 200);
-  ctx.lineTo(550 + roadCurve * 100, 200);
-  ctx.lineTo(700 + roadCurve * 300, 500);
+  ctx.moveTo(180 + roadCurve * 300, 500);
+  ctx.lineTo(350 + roadCurve * 120, 200);
+  ctx.lineTo(550 + roadCurve * 120, 200);
+  ctx.lineTo(720 + roadCurve * 300, 500);
   ctx.closePath();
   ctx.fill();
 
-  // LANE LINES
-  ctx.strokeStyle = "white";
-  ctx.setLineDash([20, 20]);
-  for (let i = -1; i <= 1; i++) {
-    ctx.beginPath();
-    ctx.moveTo(450 + i * 120 + roadCurve * 200, 500);
-    ctx.lineTo(450 + i * 40 + roadCurve * 80, 200);
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
+  // Pit lane
+  ctx.fillStyle = "#333";
+  ctx.fillRect(650, 200, 80, 300);
 
-  // AI CARS
+  // AI cars
   aiCars.forEach(ai => {
     const z = ai.dist - player.dist;
-    if (z < -50 || z > 800) return;
-
-    const scale = 1 - z / 1000;
-    const x = 450 + ai.lane * scale + roadCurve * z * 0.5;
-    const y = 300 + z * 0.4;
-
-    ctx.fillStyle = ai.color;
-    ctx.fillRect(x - 20 * scale, y - 10 * scale, 40 * scale, 20 * scale);
+    if (z < -100 || z > 900) return;
+    const s = 1 - z / 1100;
+    drawF1Car(450 + ai.lane * s, 280 + z * 0.45, s, 0, ai.color);
   });
 
-  // PLAYER CAR
-  ctx.save();
-  ctx.translate(450 + player.x, 420);
-  ctx.rotate(player.vx * 0.03);
-  ctx.fillStyle = "red";
-  ctx.fillRect(-25, -12, 50, 24);
-  ctx.restore();
+  // Player
+  drawF1Car(450 + player.x, 420, 1, player.angle, "red");
+
+  // Night overlay
+  if (night) {
+    ctx.fillStyle = "rgba(0,0,50,0.35)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  // Rain
+  if (rain) {
+    ctx.strokeStyle = "rgba(200,200,255,0.3)";
+    for (let i = 0; i < 50; i++)
+      ctx.strokeRect(Math.random()*900, Math.random()*500, 2, 10);
+  }
 
   // HUD
   ctx.fillStyle = "white";
-  ctx.font = "18px Arial";
-  ctx.fillText(`Distance: ${Math.floor(player.dist)} / ${TRACK_LENGTH} m`, 20, 30);
-  ctx.fillText("SPACE = Drift", 20, 55);
+  ctx.fillText(`Distance: ${Math.floor(player.dist)} / ${TRACK_LENGTH}`, 20, 25);
+  ctx.fillText(`Tire: ${player.tire.toFixed(0)}%`, 20, 45);
+  ctx.fillText(`Damage: ${player.damage.toFixed(0)}%`, 20, 65);
+  ctx.fillText(`Position: ${1 + aiCars.filter(a => a.dist > player.dist).length}/5`, 20, 85);
 
-  // COUNTDOWN
   if (!raceStarted) {
     ctx.font = "80px Arial";
-    ctx.fillStyle = "white";
-    const text = countdown > 120 ? "3" : countdown > 60 ? "2" : "1";
-    ctx.fillText(text, 430, 250);
+    ctx.fillText(countdown > 120 ? "3" : countdown > 60 ? "2" : "1", 430, 250);
   }
 
-  // FINISH
   if (raceOver) {
     ctx.fillStyle = "black";
     ctx.fillRect(200, 150, 520, 200);
     ctx.fillStyle = "white";
-    ctx.font = "30px Arial";
-    ctx.fillText("YOU FINISHED THE RACE!", 260, 220);
     ctx.font = "28px Arial";
-    ctx.fillText("🎉 HAPPY NEW YEAR 2026!!! 🎉", 245, 270);
+    ctx.fillText("🎉 HAPPY NEW YEAR 2026!!! 🎉", 245, 260);
   }
 }
 
-// ---------------- LOOP ----------------
+// ================= LOOP =================
 function loop() {
   update();
   draw();
   requestAnimationFrame(loop);
 }
-
 loop();
 </script>
 
